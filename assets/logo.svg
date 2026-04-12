@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7F52FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#C711E1;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="layerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#E44857;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#C711E1;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="codeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.95" />
+      <stop offset="100%" style="stop-color:#E0D0FF;stop-opacity:0.9" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <filter id="innerGlow">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+      <feFlood flood-color="#FFFFFF" flood-opacity="0.15"/>
+      <feComposite in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="32" y="32" width="448" height="448" rx="80" ry="80" fill="url(#bgGrad)" filter="url(#shadow)"/>
+
+  <!-- Subtle grid pattern suggesting UI layout -->
+  <g opacity="0.08">
+    <line x1="170" y1="80" x2="170" y2="432" stroke="#FFFFFF" stroke-width="1"/>
+    <line x1="256" y1="80" x2="256" y2="432" stroke="#FFFFFF" stroke-width="1"/>
+    <line x1="342" y1="80" x2="342" y2="432" stroke="#FFFFFF" stroke-width="1"/>
+    <line x1="80" y1="170" x2="432" y2="170" stroke="#FFFFFF" stroke-width="1"/>
+    <line x1="80" y1="256" x2="432" y2="256" stroke="#FFFFFF" stroke-width="1"/>
+    <line x1="80" y1="342" x2="432" y2="342" stroke="#FFFFFF" stroke-width="1"/>
+  </g>
+
+  <!-- Compose layers - three stacked diamond/rhombus shapes representing UI composition -->
+  <!-- Bottom layer -->
+  <g transform="translate(256, 290)" opacity="0.5">
+    <polygon points="0,-70 90,0 0,70 -90,0" fill="#FFFFFF" opacity="0.3"/>
+  </g>
+  <!-- Middle layer -->
+  <g transform="translate(256, 260)" opacity="0.7">
+    <polygon points="0,-70 90,0 0,70 -90,0" fill="#FFFFFF" opacity="0.4"/>
+  </g>
+  <!-- Top layer - main compose symbol -->
+  <g transform="translate(256, 230)" filter="url(#innerGlow)">
+    <polygon points="0,-75 95,0 0,75 -95,0" fill="url(#codeGrad)" opacity="0.9"/>
+  </g>
+
+  <!-- Code brackets < /> representing coding -->
+  <g transform="translate(256, 225)">
+    <!-- Left angle bracket < -->
+    <path d="M-28,-22 L-52,0 L-28,22" fill="none" stroke="#7F52FF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Right angle bracket > -->
+    <path d="M28,-22 L52,0 L28,22" fill="none" stroke="#7F52FF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Forward slash / -->
+    <line x1="8" y1="-20" x2="-8" y2="20" stroke="#C711E1" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <!-- Multiplatform dots - representing different platforms -->
+  <g transform="translate(256, 118)">
+    <!-- Five dots for Desktop, Mobile, Web, iOS, Android -->
+    <circle cx="-64" cy="0" r="8" fill="#FFFFFF" opacity="0.9"/>
+    <circle cx="-32" cy="0" r="8" fill="#FFFFFF" opacity="0.75"/>
+    <circle cx="0" cy="0" r="8" fill="#FFFFFF" opacity="0.9"/>
+    <circle cx="32" cy="0" r="8" fill="#FFFFFF" opacity="0.75"/>
+    <circle cx="64" cy="0" r="8" fill="#FFFFFF" opacity="0.9"/>
+    <!-- Connecting line -->
+    <line x1="-64" y1="0" x2="64" y2="0" stroke="#FFFFFF" stroke-width="2" opacity="0.35"/>
+  </g>
+
+  <!-- "CS" monogram watermark -->
+  <g transform="translate(256, 400)" opacity="0.0">
+    <!-- Hidden for icon version -->
+  </g>
+
+  <!-- Cursor/pointer suggesting drag-and-drop -->
+  <g transform="translate(350, 170)" opacity="0.85">
+    <path d="M0,0 L0,28 L8,22 L14,34 L20,31 L14,19 L24,19 Z" fill="#FFFFFF" stroke="#7F52FF" stroke-width="1.5"/>
+  </g>
+</svg>
