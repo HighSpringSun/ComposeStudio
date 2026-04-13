@@ -195,8 +195,8 @@ private fun CanvasComponent(
                 )
             }
             .size(
-                width = component.size.width.dp.value.dp,
-                height = component.size.height.dp.value.dp
+                width = component.size.width.dp,
+                height = component.size.height.dp
             )
     ) {
         // Component visual

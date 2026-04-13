@@ -115,7 +115,7 @@ private fun HierarchyItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = name,
-                color = if (isSelected) StudioColors.OnSurface else StudioColors.OnSurface,
+                color = StudioColors.OnSurface,
                 fontSize = 12.sp,
                 fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
