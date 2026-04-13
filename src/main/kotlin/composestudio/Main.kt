@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +50,7 @@ import composestudio.ui.canvas.DesignCanvas
 import composestudio.ui.codegen.CodeGenerationPanel
 import composestudio.ui.hierarchy.ComponentHierarchy
 import composestudio.ui.palette.ComponentPalette
+import composestudio.ui.palette.PaletteDragSession
 import composestudio.ui.properties.PropertiesPanel
 import composestudio.ui.theme.StudioColors
 
@@ -102,73 +105,133 @@ fun main() = application {
 @Composable
 fun ComposeStudioApp(designState: DesignState) {
     var placingComponentType by remember { mutableStateOf<ComponentType?>(null) }
+    var paletteDragSession by remember { mutableStateOf<PaletteDragSession?>(null) }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(StudioColors.Background)
     ) {
-        // Toolbar
-        Toolbar(
-            designState = designState,
-            placingComponentType = placingComponentType
-        )
-
-        HorizontalDivider(color = StudioColors.Border, thickness = 1.dp)
-
-        // Main content
-        Row(modifier = Modifier.fillMaxSize()) {
-            // Left panel: Component Palette + Hierarchy
-            Column(
-                modifier = Modifier
-                    .width(200.dp)
-                    .fillMaxHeight()
-            ) {
-                ComponentPalette(
-                    onComponentSelected = { placingComponentType = it },
-                    modifier = Modifier.weight(1f).fillMaxWidth()
-                )
-
-                HorizontalDivider(color = StudioColors.Border, thickness = 1.dp)
-
-                ComponentHierarchy(
-                    designState = designState,
-                    modifier = Modifier.weight(0.6f).fillMaxWidth()
-                )
-            }
-
-            VerticalDivider(
-                color = StudioColors.Border,
-                modifier = Modifier.width(1.dp).fillMaxHeight()
-            )
-
-            // Center: Canvas or Code
-            if (designState.showCodeGeneration) {
-                CodeGenerationPanel(
-                    designState = designState,
-                    onClose = { designState.showCodeGeneration = false },
-                    modifier = Modifier.weight(1f).fillMaxHeight()
-                )
-            } else {
-                DesignCanvas(
-                    designState = designState,
-                    placingComponentType = placingComponentType,
-                    onComponentPlaced = { placingComponentType = null },
-                    modifier = Modifier.weight(1f).fillMaxHeight()
-                )
-            }
-
-            VerticalDivider(
-                color = StudioColors.Border,
-                modifier = Modifier.width(1.dp).fillMaxHeight()
-            )
-
-            // Right panel: Properties
-            PropertiesPanel(
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Toolbar
+            Toolbar(
                 designState = designState,
-                modifier = Modifier.width(260.dp).fillMaxHeight()
+                placingComponentType = placingComponentType
+            )
+
+            HorizontalDivider(color = StudioColors.Border, thickness = 1.dp)
+
+            // Main content
+            Row(modifier = Modifier.fillMaxSize()) {
+                // Left panel: Component Palette + Hierarchy
+                Column(
+                    modifier = Modifier
+                        .width(200.dp)
+                        .fillMaxHeight()
+                ) {
+                    ComponentPalette(
+                        onComponentSelected = { placingComponentType = it },
+                        onDragStart = { type, startPosition ->
+                            placingComponentType = null
+                            paletteDragSession = PaletteDragSession(
+                                componentType = type,
+                                positionInWindow = startPosition,
+                                isDragging = true
+                            )
+                        },
+                        onDrag = { type, position ->
+                            paletteDragSession = PaletteDragSession(
+                                componentType = type,
+                                positionInWindow = position,
+                                isDragging = true
+                            )
+                        },
+                        onDragEnd = { type, endPosition ->
+                            paletteDragSession = PaletteDragSession(
+                                componentType = type,
+                                positionInWindow = endPosition,
+                                isDragging = false,
+                                dropPending = true
+                            )
+                        },
+                        onDragCancel = { paletteDragSession = null },
+                        modifier = Modifier.weight(1f).fillMaxWidth()
+                    )
+
+                    HorizontalDivider(color = StudioColors.Border, thickness = 1.dp)
+
+                    ComponentHierarchy(
+                        designState = designState,
+                        modifier = Modifier.weight(0.6f).fillMaxWidth()
+                    )
+                }
+
+                VerticalDivider(
+                    color = StudioColors.Border,
+                    modifier = Modifier.width(1.dp).fillMaxHeight()
+                )
+
+                // Center: Canvas or Code
+                if (designState.showCodeGeneration) {
+                    CodeGenerationPanel(
+                        designState = designState,
+                        onClose = { designState.showCodeGeneration = false },
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                } else {
+                    DesignCanvas(
+                        designState = designState,
+                        placingComponentType = placingComponentType,
+                        paletteDragSession = paletteDragSession,
+                        onComponentPlaced = { placingComponentType = null },
+                        onPaletteDropHandled = { paletteDragSession = null },
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                }
+
+                VerticalDivider(
+                    color = StudioColors.Border,
+                    modifier = Modifier.width(1.dp).fillMaxHeight()
+                )
+
+                // Right panel: Properties
+                PropertiesPanel(
+                    designState = designState,
+                    modifier = Modifier.width(260.dp).fillMaxHeight()
+                )
+            }
+        }
+
+        if (paletteDragSession?.isDragging == true) {
+            DragPreview(
+                session = paletteDragSession!!,
+                modifier = Modifier.align(Alignment.TopStart)
             )
         }
+    }
+}
+
+@Composable
+private fun DragPreview(
+    session: PaletteDragSession,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = StudioColors.DragPreview,
+        shape = MaterialTheme.shapes.small,
+        modifier = modifier.offset {
+            androidx.compose.ui.unit.IntOffset(
+                (session.positionInWindow.x - 42f).toInt(),
+                (session.positionInWindow.y - 18f).toInt()
+            )
+        }
+    ) {
+        Text(
+            text = session.componentType.displayName,
+            color = StudioColors.OnPrimary,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        )
     }
 }
 

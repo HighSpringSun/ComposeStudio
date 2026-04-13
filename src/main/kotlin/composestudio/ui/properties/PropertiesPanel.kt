@@ -106,6 +106,13 @@ private fun ComponentInfo(component: DesignComponent) {
             color = StudioColors.OnSurfaceVariant,
             fontSize = 10.sp
         )
+        if (component.parentId != null) {
+            Text(
+                text = "Parent: ${component.parentId} • Slot: ${component.childSlot}",
+                color = StudioColors.OnSurfaceVariant,
+                fontSize = 10.sp
+            )
+        }
     }
 }
 
@@ -113,39 +120,50 @@ private fun ComponentInfo(component: DesignComponent) {
 private fun PositionSizeEditor(component: DesignComponent, designState: DesignState) {
     SectionHeader("Layout")
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        CompactNumberField(
-            label = "X",
-            value = component.position.x.toInt().toString(),
-            onValueChange = { newVal ->
-                newVal.toFloatOrNull()?.let { x ->
-                    designState.moveComponent(
-                        component.id,
-                        component.position.copy(x = x)
-                    )
-                }
-            },
-            modifier = Modifier.weight(1f)
-        )
-        CompactNumberField(
-            label = "Y",
-            value = component.position.y.toInt().toString(),
-            onValueChange = { newVal ->
-                newVal.toFloatOrNull()?.let { y ->
-                    designState.moveComponent(
-                        component.id,
-                        component.position.copy(y = y)
-                    )
-                }
-            },
-            modifier = Modifier.weight(1f)
+    if (component.parentId != null) {
+        Text(
+            text = "This component is managed by its parent layout. You can still edit width/height and properties below.",
+            color = StudioColors.OnSurfaceVariant,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
         )
     }
 
-    Spacer(Modifier.height(4.dp))
+    if (component.parentId == null) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CompactNumberField(
+                label = "X",
+                value = component.position.x.toInt().toString(),
+                onValueChange = { newVal ->
+                    newVal.toFloatOrNull()?.let { x ->
+                        designState.moveComponent(
+                            component.id,
+                            component.position.copy(x = x)
+                        )
+                    }
+                },
+                modifier = Modifier.weight(1f)
+            )
+            CompactNumberField(
+                label = "Y",
+                value = component.position.y.toInt().toString(),
+                onValueChange = { newVal ->
+                    newVal.toFloatOrNull()?.let { y ->
+                        designState.moveComponent(
+                            component.id,
+                            component.position.copy(y = y)
+                        )
+                    }
+                },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(Modifier.height(4.dp))
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),

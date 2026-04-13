@@ -36,16 +36,18 @@ data class AddComponentAction(
  * Action: Delete a component from the canvas.
  */
 data class DeleteComponentAction(
-    val component: DesignComponent
+    val components: List<DesignComponent>
 ) : Action {
-    override val description = "Delete ${component.type.displayName}"
+    private val rootComponent: DesignComponent = components.first()
+
+    override val description = "Delete ${rootComponent.type.displayName}"
 
     override fun execute(state: DesignState) {
-        state.internalRemoveComponent(component.id)
+        state.internalRemoveComponents(components.map { it.id })
     }
 
     override fun undo(state: DesignState) {
-        state.internalAddComponent(component)
+        state.internalRestoreComponents(components)
     }
 }
 

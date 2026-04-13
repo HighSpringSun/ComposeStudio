@@ -2,43 +2,25 @@ package composestudio.ui.palette
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckBox
-import androidx.compose.material.icons.filled.CropLandscape
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.HorizontalRule
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.LinearScale
-import androidx.compose.material.icons.filled.RadioButtonChecked
-import androidx.compose.material.icons.filled.SmartButton
-import androidx.compose.material.icons.filled.SpaceBar
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.TableRows
-import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.material.icons.filled.ToggleOn
-import androidx.compose.material.icons.filled.ViewColumn
-import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,6 +37,10 @@ import composestudio.ui.theme.StudioColors
 @Composable
 fun ComponentPalette(
     onComponentSelected: (ComponentType) -> Unit,
+    onDragStart: (ComponentType, Offset) -> Unit,
+    onDrag: (ComponentType, Offset) -> Unit,
+    onDragEnd: (ComponentType, Offset) -> Unit,
+    onDragCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -90,7 +76,11 @@ fun ComponentPalette(
                 componentsInCategory.forEach { componentType ->
                     PaletteItem(
                         componentType = componentType,
-                        onClick = { onComponentSelected(componentType) }
+                        onClick = { onComponentSelected(componentType) },
+                        onDragStart = onDragStart,
+                        onDrag = onDrag,
+                        onDragEnd = onDragEnd,
+                        onDragCancel = onDragCancel
                     )
                 }
             }
@@ -102,8 +92,16 @@ fun ComponentPalette(
 private fun PaletteItem(
     componentType: ComponentType,
     onClick: () -> Unit,
+    onDragStart: (ComponentType, Offset) -> Unit,
+    onDrag: (ComponentType, Offset) -> Unit,
+    onDragEnd: (ComponentType, Offset) -> Unit,
+    onDragCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var itemWindowPosition by remember { mutableStateOf(Offset.Zero) }
+    var currentPointerWindowPosition by remember { mutableStateOf(Offset.Zero) }
+    var dragStarted by remember { mutableStateOf(false) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
@@ -111,7 +109,34 @@ private fun PaletteItem(
             .clip(RoundedCornerShape(8.dp))
             .background(StudioColors.SurfaceVariant)
             .border(1.dp, StudioColors.Border, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
+            .onGloballyPositioned { coordinates ->
+                itemWindowPosition = coordinates.positionInWindow()
+            }
+            .pointerInput(componentType) {
+                detectTapGestures(onTap = { onClick() })
+            }
+            .pointerInput(componentType) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        dragStarted = true
+                        currentPointerWindowPosition = itemWindowPosition + offset
+                        onDragStart(componentType, currentPointerWindowPosition)
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        currentPointerWindowPosition += dragAmount
+                        onDrag(componentType, currentPointerWindowPosition)
+                    },
+                    onDragEnd = {
+                        if (dragStarted) onDragEnd(componentType, currentPointerWindowPosition)
+                        dragStarted = false
+                    },
+                    onDragCancel = {
+                        dragStarted = false
+                        onDragCancel()
+                    }
+                )
+            }
             .padding(4.dp)
     ) {
         Box(
@@ -149,6 +174,7 @@ private val ComponentType.icon: ImageVector
         ComponentType.Column -> Icons.Default.ViewColumn
         ComponentType.Row -> Icons.Default.TableRows
         ComponentType.Box -> Icons.Default.ViewInAr
+        ComponentType.Scaffold -> Icons.Default.CropLandscape
         ComponentType.Spacer -> Icons.Default.SpaceBar
         ComponentType.Divider -> Icons.Default.HorizontalRule
         ComponentType.Slider -> Icons.Default.LinearScale

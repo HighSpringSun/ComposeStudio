@@ -12,8 +12,9 @@ data class DesignComponent(
     val position: Offset = Offset.Zero,
     val size: Size = type.defaultSize,
     val properties: Map<String, PropertyValue> = type.defaultProperties,
-    val children: List<String> = emptyList(),
-    val parentId: String? = null
+    val parentId: String? = null,
+    val childSlot: String = "content",
+    val childOrder: Int = 0
 )
 
 /**
@@ -24,7 +25,8 @@ enum class ComponentType(
     val category: ComponentCategory,
     val defaultSize: Size,
     val defaultProperties: Map<String, PropertyValue>,
-    val supportsChildren: Boolean = false
+    val supportsChildren: Boolean = false,
+    val supportedChildSlots: List<String> = if (supportsChildren) listOf("content") else emptyList()
 ) {
     Text(
         displayName = "Text",
@@ -131,6 +133,14 @@ enum class ComponentType(
             ))
         ),
         supportsChildren = true
+    ),
+    Scaffold(
+        displayName = "Scaffold",
+        category = ComponentCategory.Layout,
+        defaultSize = Size(420f, 640f),
+        defaultProperties = emptyMap(),
+        supportsChildren = true,
+        supportedChildSlots = listOf("topBar", "content", "bottomBar", "floatingActionButton")
     ),
     Spacer(
         displayName = "Spacer",

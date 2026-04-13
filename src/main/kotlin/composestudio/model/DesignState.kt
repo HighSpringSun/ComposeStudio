@@ -57,21 +57,59 @@ class DesignState {
     val rootComponentIds: List<String>
         get() = _components.values
             .filter { it.parentId == null }
-            .sortedBy { it.id }
+            .sortedBy { it.childOrder }
             .map { it.id }
+
+    fun childComponents(parentId: String, slot: String? = null): List<DesignComponent> {
+        return _components.values
+            .filter { it.parentId == parentId && (slot == null || it.childSlot == slot) }
+            .sortedBy { it.childOrder }
+    }
+
+    fun subtreeComponents(rootId: String): List<DesignComponent> {
+        val result = mutableListOf<DesignComponent>()
+
+        fun visit(id: String) {
+            val component = _components[id] ?: return
+            result += component
+            childComponents(id).forEach { visit(it.id) }
+        }
+
+        visit(rootId)
+        return result
+    }
+
+    fun componentDepth(id: String): Int {
+        var depth = 0
+        var current = _components[id]?.parentId
+        while (current != null) {
+            depth++
+            current = _components[current]?.parentId
+        }
+        return depth
+    }
 
     fun selectComponent(id: String?) {
         selectedComponentId = id
     }
 
-    fun addComponent(type: ComponentType, position: Offset): String {
+    fun addComponent(
+        type: ComponentType,
+        position: Offset,
+        parentId: String? = null,
+        childSlot: String = "content"
+    ): String {
         val id = UUID.randomUUID().toString().take(8)
+        val resolvedSlot = if (parentId == null) "root" else childSlot
         val component = DesignComponent(
             id = id,
             type = type,
             position = position,
             size = type.defaultSize,
-            properties = type.defaultProperties
+            properties = type.defaultProperties,
+            parentId = parentId,
+            childSlot = resolvedSlot,
+            childOrder = nextChildOrder(parentId, resolvedSlot)
         )
         val action = AddComponentAction(component)
         executeAction(action)
@@ -103,10 +141,10 @@ class DesignState {
     }
 
     fun deleteComponent(id: String) {
-        val component = _components[id] ?: return
-        val action = DeleteComponentAction(component)
+        if (id !in _components) return
+        val action = DeleteComponentAction(subtreeComponents(id))
         executeAction(action)
-        if (selectedComponentId == id) {
+        if (selectedComponentId == id || selectedComponentId in action.components.map { it.id }) {
             selectedComponentId = null
         }
     }
@@ -135,13 +173,29 @@ class DesignState {
         redoStack.clear()
     }
 
+    private fun nextChildOrder(parentId: String?, childSlot: String): Int {
+        return _components.values
+            .filter { it.parentId == parentId && it.childSlot == childSlot }
+            .maxOfOrNull { it.childOrder }
+            ?.plus(1)
+            ?: 0
+    }
+
     // Internal methods used by Actions
     internal fun internalAddComponent(component: DesignComponent) {
         _components[component.id] = component
     }
 
+    internal fun internalRestoreComponents(components: List<DesignComponent>) {
+        components.forEach { _components[it.id] = it }
+    }
+
     internal fun internalRemoveComponent(id: String) {
         _components.remove(id)
+    }
+
+    internal fun internalRemoveComponents(ids: Collection<String>) {
+        ids.forEach(_components::remove)
     }
 
     internal fun internalUpdateComponent(id: String, updater: (DesignComponent) -> DesignComponent) {

@@ -3,14 +3,17 @@ package composestudio.ui.canvas
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -20,7 +23,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
@@ -55,12 +57,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -70,6 +73,7 @@ import composestudio.model.ComponentType
 import composestudio.model.DesignComponent
 import composestudio.model.DesignState
 import composestudio.model.PropertyValue
+import composestudio.ui.palette.PaletteDragSession
 import composestudio.ui.theme.StudioColors
 
 /**
@@ -79,32 +83,60 @@ import composestudio.ui.theme.StudioColors
 fun DesignCanvas(
     designState: DesignState,
     placingComponentType: ComponentType?,
+    paletteDragSession: PaletteDragSession?,
     onComponentPlaced: () -> Unit,
+    onPaletteDropHandled: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val componentBounds = remember { mutableMapOf<String, Rect>() }
+    var canvasBounds by remember { mutableStateOf<Rect?>(null) }
+
+    fun placeComponentFromCanvasPosition(type: ComponentType, localOffset: Offset, windowOffset: Offset) {
+        val dropTarget = resolveDropTarget(designState, componentBounds, windowOffset)
+        if (dropTarget == null) {
+            designState.addComponent(
+                type = type,
+                position = Offset(
+                    x = (localOffset.x - type.defaultSize.width / 2).coerceAtLeast(0f),
+                    y = (localOffset.y - type.defaultSize.height / 2).coerceAtLeast(0f)
+                )
+            )
+        } else {
+            designState.addComponent(
+                type = type,
+                position = Offset.Zero,
+                parentId = dropTarget.parentId,
+                childSlot = dropTarget.childSlot
+            )
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(paletteDragSession) {
+        val session = paletteDragSession ?: return@LaunchedEffect
+        val bounds = canvasBounds ?: return@LaunchedEffect
+        if (!session.dropPending) return@LaunchedEffect
+
+        if (bounds.contains(session.positionInWindow)) {
+            val localOffset = session.positionInWindow - bounds.topLeft
+            placeComponentFromCanvasPosition(session.componentType, localOffset, session.positionInWindow)
+        }
+
+        onPaletteDropHandled()
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(StudioColors.CanvasBackground)
+            .onGloballyPositioned { canvasBounds = it.boundsInWindow() }
             .pointerInput(placingComponentType) {
                 detectTapGestures { offset ->
+                    val windowOffset = canvasBounds?.topLeft?.plus(offset) ?: offset
                     if (placingComponentType != null) {
-                        designState.addComponent(
-                            type = placingComponentType,
-                            position = offset - Offset(
-                                placingComponentType.defaultSize.width / 2,
-                                placingComponentType.defaultSize.height / 2
-                            )
-                        )
+                        placeComponentFromCanvasPosition(placingComponentType, offset, windowOffset)
                         onComponentPlaced()
                     } else {
-                        // Check if clicked on empty space
-                        val clickedOnComponent = designState.components.values.any { comp ->
-                            offset.x >= comp.position.x &&
-                            offset.x <= comp.position.x + comp.size.width &&
-                            offset.y >= comp.position.y &&
-                            offset.y <= comp.position.y + comp.size.height
-                        }
+                        val clickedOnComponent = componentBounds.values.any { it.contains(windowOffset) }
                         if (!clickedOnComponent) {
                             designState.selectComponent(null)
                         }
@@ -121,11 +153,13 @@ fun DesignCanvas(
         }
 
         // Render all components
-        designState.components.values.forEach { component ->
+        designState.rootComponentIds.forEach { id ->
+            val component = designState.components[id] ?: return@forEach
             CanvasComponent(
                 component = component,
                 isSelected = component.id == designState.selectedComponentId,
-                designState = designState
+                designState = designState,
+                componentBounds = componentBounds
             )
         }
     }
@@ -182,77 +216,93 @@ private fun PlacementIndicator() {
 private fun CanvasComponent(
     component: DesignComponent,
     isSelected: Boolean,
-    designState: DesignState
+    designState: DesignState,
+    componentBounds: MutableMap<String, Rect>
 ) {
     var dragOffset by remember(component.id) { mutableStateOf(Offset.Zero) }
+    val isRoot = component.parentId == null
 
     Box(
         modifier = Modifier
-            .offset {
-                IntOffset(
-                    (component.position.x + dragOffset.x).toInt(),
-                    (component.position.y + dragOffset.y).toInt()
-                )
-            }
+            .then(
+                if (isRoot) {
+                    Modifier.offset {
+                        IntOffset(
+                            (component.position.x + dragOffset.x).toInt(),
+                            (component.position.y + dragOffset.y).toInt()
+                        )
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .size(
                 width = component.size.width.dp,
                 height = component.size.height.dp
             )
+            .onGloballyPositioned { coordinates ->
+                componentBounds[component.id] = coordinates.boundsInWindow()
+            }
     ) {
-        // Component visual
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (isSelected) {
-                        Modifier.border(
-                            width = 2.dp,
-                            color = StudioColors.SelectionBorder,
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                    } else {
-                        Modifier.border(
-                            width = 1.dp,
-                            color = StudioColors.Border.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                    }
-                )
-                .clip(RoundedCornerShape(4.dp))
-                .background(StudioColors.Surface.copy(alpha = 0.9f))
-                .pointerInput(component.id) {
-                    detectTapGestures {
-                        designState.selectComponent(component.id)
-                    }
-                }
-                .pointerInput(component.id) {
-                    detectDragGestures(
-                        onDragStart = {
-                            designState.selectComponent(component.id)
-                            dragOffset = Offset.Zero
-                        },
-                        onDrag = { _, drag ->
-                            dragOffset += drag
-                        },
-                        onDragEnd = {
-                            designState.moveComponent(
-                                component.id,
-                                component.position + dragOffset
-                            )
-                            dragOffset = Offset.Zero
-                        },
-                        onDragCancel = {
-                            dragOffset = Offset.Zero
-                        }
+        val interactionModifier = Modifier
+            .fillMaxSize()
+            .then(
+                if (isSelected) {
+                    Modifier.border(
+                        width = 2.dp,
+                        color = StudioColors.SelectionBorder,
+                        shape = RoundedCornerShape(4.dp)
+                    )
+                } else {
+                    Modifier.border(
+                        width = 1.dp,
+                        color = StudioColors.Border.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(4.dp)
                     )
                 }
-                .padding(4.dp)
-        ) {
-            ComponentPreview(component)
+            )
+            .clip(RoundedCornerShape(4.dp))
+            .background(StudioColors.Surface.copy(alpha = 0.9f))
+            .pointerInput(component.id) {
+                detectTapGestures {
+                    designState.selectComponent(component.id)
+                }
+            }
+            .then(
+                if (isRoot) {
+                    Modifier.pointerInput(component.id) {
+                        detectDragGestures(
+                            onDragStart = {
+                                designState.selectComponent(component.id)
+                                dragOffset = Offset.Zero
+                            },
+                            onDrag = { change, drag ->
+                                change.consume()
+                                dragOffset += drag
+                            },
+                            onDragEnd = {
+                                designState.moveComponent(
+                                    component.id,
+                                    component.position + dragOffset
+                                )
+                                dragOffset = Offset.Zero
+                            },
+                            onDragCancel = {
+                                dragOffset = Offset.Zero
+                            }
+                        )
+                    }
+                } else {
+                    Modifier
+                }
+            )
+            .padding(4.dp)
+
+        Box(modifier = interactionModifier) {
+            ComponentPreview(component, designState, componentBounds)
         }
 
-        // Resize handles (only when selected)
-        if (isSelected) {
+        if (isSelected && isRoot) {
             ResizeHandles(component, designState)
         }
     }
@@ -262,7 +312,11 @@ private fun CanvasComponent(
  * Renders a preview of the component based on its type and properties.
  */
 @Composable
-private fun ComponentPreview(component: DesignComponent) {
+private fun ComponentPreview(
+    component: DesignComponent,
+    designState: DesignState,
+    componentBounds: MutableMap<String, Rect>
+) {
     val props = component.properties
 
     when (component.type) {
@@ -312,7 +366,7 @@ private fun ComponentPreview(component: DesignComponent) {
             OutlinedTextField(
                 value = "",
                 onValueChange = {},
-                label = if (label.isNotEmpty()) {{ Text(label, fontSize = 11.sp) }} else null,
+                label = if (label.isNotEmpty()) { { Text(label, fontSize = 11.sp) } } else null,
                 placeholder = { Text(placeholder, fontSize = 11.sp) },
                 enabled = (props["enabled"] as? PropertyValue.BooleanValue)?.value ?: true,
                 singleLine = (props["singleLine"] as? PropertyValue.BooleanValue)?.value ?: true,
@@ -392,54 +446,155 @@ private fun ComponentPreview(component: DesignComponent) {
                 ),
                 modifier = Modifier.fillMaxSize().padding(2.dp)
             ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Text("Card", color = StudioColors.OnSurfaceVariant, fontSize = 12.sp)
+                Column(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                    Text("Card", color = StudioColors.OnSurfaceVariant, fontSize = 10.sp)
+                    Spacer(Modifier.height(8.dp))
+                    LayoutChildren(
+                        designState = designState,
+                        parent = component,
+                        componentBounds = componentBounds,
+                        slot = "content"
+                    )
                 }
             }
         }
 
         ComponentType.Column -> {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .dashedBorder(StudioColors.Secondary.copy(alpha = 0.5f))
-                    .padding(8.dp)
-            ) {
-                Column {
-                    Text("Column", color = StudioColors.Secondary, fontSize = 10.sp)
-                    val spacing = (props["spacing"] as? PropertyValue.IntValue)?.value ?: 8
-                    Text("spacing: ${spacing}dp", color = StudioColors.OnSurfaceVariant, fontSize = 9.sp)
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(
+                    ((props["spacing"] as? PropertyValue.IntValue)?.value ?: 8).dp
+                ),
+                horizontalAlignment = when ((props["horizontalAlignment"] as? PropertyValue.ChoiceValue)?.selected) {
+                    "CenterHorizontally" -> Alignment.CenterHorizontally
+                    "End" -> Alignment.End
+                    else -> Alignment.Start
                 }
+            ) {
+                Text("Column", color = StudioColors.Secondary, fontSize = 10.sp)
+                LayoutChildren(
+                    designState = designState,
+                    parent = component,
+                    componentBounds = componentBounds,
+                    slot = "content"
+                )
             }
         }
 
         ComponentType.Row -> {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxSize()
                     .dashedBorder(StudioColors.Secondary.copy(alpha = 0.5f))
-                    .padding(8.dp)
-            ) {
-                Row {
-                    Text("Row", color = StudioColors.Secondary, fontSize = 10.sp)
-                    Spacer(Modifier.width(8.dp))
-                    val spacing = (props["spacing"] as? PropertyValue.IntValue)?.value ?: 8
-                    Text("spacing: ${spacing}dp", color = StudioColors.OnSurfaceVariant, fontSize = 9.sp)
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(
+                    ((props["spacing"] as? PropertyValue.IntValue)?.value ?: 8).dp
+                ),
+                verticalAlignment = when ((props["verticalAlignment"] as? PropertyValue.ChoiceValue)?.selected) {
+                    "CenterVertically" -> Alignment.CenterVertically
+                    "Bottom" -> Alignment.Bottom
+                    else -> Alignment.Top
                 }
+            ) {
+                Text("Row", color = StudioColors.Secondary, fontSize = 10.sp)
+                LayoutChildren(
+                    designState = designState,
+                    parent = component,
+                    componentBounds = componentBounds,
+                    slot = "content"
+                )
             }
         }
 
         ComponentType.Box -> {
             Box(
+                contentAlignment = when ((props["contentAlignment"] as? PropertyValue.ChoiceValue)?.selected) {
+                    "TopCenter" -> Alignment.TopCenter
+                    "TopEnd" -> Alignment.TopEnd
+                    "CenterStart" -> Alignment.CenterStart
+                    "Center" -> Alignment.Center
+                    "CenterEnd" -> Alignment.CenterEnd
+                    "BottomStart" -> Alignment.BottomStart
+                    "BottomCenter" -> Alignment.BottomCenter
+                    "BottomEnd" -> Alignment.BottomEnd
+                    else -> Alignment.TopStart
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .dashedBorder(StudioColors.Accent.copy(alpha = 0.5f))
                     .padding(8.dp)
             ) {
-                Text("Box", color = StudioColors.Accent, fontSize = 10.sp)
+                if (designState.childComponents(component.id).isEmpty()) {
+                    Text("Box", color = StudioColors.Accent, fontSize = 10.sp)
+                }
+                LayoutChildren(
+                    designState = designState,
+                    parent = component,
+                    componentBounds = componentBounds,
+                    slot = "content"
+                )
+            }
+        }
+
+        ComponentType.Scaffold -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(StudioColors.SurfaceBright)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    ScaffoldSlot(
+                        title = "Top Bar",
+                        designState = designState,
+                        parent = component,
+                        componentBounds = componentBounds,
+                        slot = "topBar",
+                        minHeight = 52.dp,
+                        paddingValues = PaddingValues(6.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .dashedBorder(StudioColors.Secondary.copy(alpha = 0.35f))
+                            .padding(8.dp)
+                    ) {
+                        LayoutChildren(
+                            designState = designState,
+                            parent = component,
+                            componentBounds = componentBounds,
+                            slot = "content",
+                            placeholder = "Drop into Scaffold content"
+                        )
+                    }
+                    ScaffoldSlot(
+                        title = "Bottom Bar",
+                        designState = designState,
+                        parent = component,
+                        componentBounds = componentBounds,
+                        slot = "bottomBar",
+                        minHeight = 52.dp,
+                        paddingValues = PaddingValues(6.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp)
+                ) {
+                    LayoutChildren(
+                        designState = designState,
+                        parent = component,
+                        componentBounds = componentBounds,
+                        slot = "floatingActionButton",
+                        placeholder = "FAB"
+                    )
+                }
             }
         }
 
@@ -534,6 +689,109 @@ private fun ComponentPreview(component: DesignComponent) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LayoutChildren(
+    designState: DesignState,
+    parent: DesignComponent,
+    componentBounds: MutableMap<String, Rect>,
+    slot: String,
+    placeholder: String = "Drop components here"
+) {
+    val children = designState.childComponents(parent.id, slot)
+
+    if (children.isEmpty()) {
+        Text(
+            text = placeholder,
+            color = StudioColors.OnSurfaceVariant,
+            fontSize = 9.sp
+        )
+        return
+    }
+
+    children.forEach { child ->
+        CanvasComponent(
+            component = child,
+            isSelected = child.id == designState.selectedComponentId,
+            designState = designState,
+            componentBounds = componentBounds
+        )
+    }
+}
+
+@Composable
+private fun ScaffoldSlot(
+    title: String,
+    designState: DesignState,
+    parent: DesignComponent,
+    componentBounds: MutableMap<String, Rect>,
+    slot: String,
+    minHeight: androidx.compose.ui.unit.Dp,
+    paddingValues: PaddingValues
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = minHeight)
+            .background(StudioColors.SurfaceVariant)
+            .padding(paddingValues)
+    ) {
+        val children = designState.childComponents(parent.id, slot)
+        if (children.isEmpty()) {
+            Text(
+                text = title,
+                color = StudioColors.OnSurfaceVariant,
+                fontSize = 9.sp,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
+        } else {
+            children.forEach { child ->
+                CanvasComponent(
+                    component = child,
+                    isSelected = child.id == designState.selectedComponentId,
+                    designState = designState,
+                    componentBounds = componentBounds
+                )
+            }
+        }
+    }
+}
+
+private data class DropTarget(val parentId: String, val childSlot: String)
+
+private fun resolveDropTarget(
+    designState: DesignState,
+    componentBounds: Map<String, Rect>,
+    windowPosition: Offset
+): DropTarget? {
+    val candidates = designState.components.values
+        .filter { it.type.supportsChildren }
+        .mapNotNull { component ->
+            val bounds = componentBounds[component.id] ?: return@mapNotNull null
+            if (!bounds.contains(windowPosition)) return@mapNotNull null
+            Triple(component, bounds, designState.componentDepth(component.id))
+        }
+        .sortedWith(compareByDescending<Triple<DesignComponent, Rect, Int>> { it.third }.thenBy { it.second.width * it.second.height })
+
+    val target = candidates.firstOrNull() ?: return null
+    val slot = when (target.first.type) {
+        ComponentType.Scaffold -> resolveScaffoldSlot(target.second, windowPosition)
+        else -> "content"
+    }
+    return DropTarget(target.first.id, slot)
+}
+
+private fun resolveScaffoldSlot(bounds: Rect, windowPosition: Offset): String {
+    val relativeY = (windowPosition.y - bounds.top) / bounds.height
+    val relativeX = (windowPosition.x - bounds.left) / bounds.width
+
+    return when {
+        relativeY <= 0.16f -> "topBar"
+        relativeY >= 0.84f && relativeX >= 0.7f -> "floatingActionButton"
+        relativeY >= 0.84f -> "bottomBar"
+        else -> "content"
     }
 }
 

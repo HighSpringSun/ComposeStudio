@@ -62,12 +62,10 @@ fun ComponentHierarchy(
         } else {
             designState.rootComponentIds.forEach { id ->
                 val component = designState.components[id] ?: return@forEach
-                HierarchyItem(
-                    name = component.type.displayName,
-                    id = component.id,
-                    isSelected = component.id == designState.selectedComponentId,
-                    onSelect = { designState.selectComponent(component.id) },
-                    onDelete = { designState.deleteComponent(component.id) }
+                HierarchyTreeItem(
+                    designState = designState,
+                    componentId = component.id,
+                    level = 0
                 )
             }
         }
@@ -85,10 +83,43 @@ fun ComponentHierarchy(
 }
 
 @Composable
+private fun HierarchyTreeItem(
+    designState: DesignState,
+    componentId: String,
+    level: Int
+) {
+    val component = designState.components[componentId] ?: return
+
+    HierarchyItem(
+        name = component.type.displayName,
+        subtitle = buildString {
+            append(component.id)
+            if (component.parentId != null) {
+                append(" • ")
+                append(component.childSlot)
+            }
+        },
+        isSelected = component.id == designState.selectedComponentId,
+        level = level,
+        onSelect = { designState.selectComponent(component.id) },
+        onDelete = { designState.deleteComponent(component.id) }
+    )
+
+    designState.childComponents(component.id).forEach { child ->
+        HierarchyTreeItem(
+            designState = designState,
+            componentId = child.id,
+            level = level + 1
+        )
+    }
+}
+
+@Composable
 private fun HierarchyItem(
     name: String,
-    id: String,
+    subtitle: String,
     isSelected: Boolean,
+    level: Int,
     onSelect: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -103,7 +134,7 @@ private fun HierarchyItem(
                 else StudioColors.Surface
             )
             .clickable(onClick = onSelect)
-            .padding(horizontal = 6.dp, vertical = 4.dp)
+            .padding(start = (6 + level * 14).dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
     ) {
         Icon(
             imageVector = Icons.Default.Widgets,
@@ -122,7 +153,7 @@ private fun HierarchyItem(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = id,
+                text = subtitle,
                 color = StudioColors.OnSurfaceVariant,
                 fontSize = 9.sp,
                 maxLines = 1,
