@@ -1,8 +1,9 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
-    kotlin("jvm") version "1.9.22"
-    id("org.jetbrains.compose") version "1.6.0"
+    kotlin("jvm") version "2.3.10"
+    id("org.jetbrains.compose") version "1.10.2"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.3.10"
 }
 
 group = "com.composestudio"
@@ -10,8 +11,8 @@ version = "1.0.0"
 
 dependencies {
     implementation(compose.desktop.currentOs)
-    implementation(compose.material3)
-    implementation(compose.materialIconsExtended)
+    implementation("org.jetbrains.compose.material3:material3:1.9.0")
+    implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
 }
 
 compose.desktop {
